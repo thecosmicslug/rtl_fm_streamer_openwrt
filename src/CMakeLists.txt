@@ -17,101 +17,154 @@
 # the Free Software Foundation, Inc., 51 Franklin Street,
 # Boston, MA 02110-1301, USA.
 
-MACRO(RTLSDR_APPEND_SRCS)
-    LIST(APPEND rtlsdr_srcs ${ARGV})
-ENDMACRO(RTLSDR_APPEND_SRCS)
-
-RTLSDR_APPEND_SRCS(
-    librtlsdr.c
-    tuner_e4k.c
-    tuner_fc0012.c
-    tuner_fc0013.c
-    tuner_fc2580.c
-    tuner_r82xx.c
-)
 
 ########################################################################
-# Set up Windows DLL resource files
+# Project setup
 ########################################################################
-IF(MSVC)
-    include(${CMAKE_SOURCE_DIR}/cmake/Modules/Version.cmake)
+cmake_minimum_required(VERSION 2.6)
+project(rtlsdr C)
 
-    configure_file(
-        ${CMAKE_CURRENT_SOURCE_DIR}/rtlsdr.rc.in
-        ${CMAKE_CURRENT_BINARY_DIR}/rtlsdr.rc
-    @ONLY)
+#select the release build type by default to get optimization flags
+if(NOT CMAKE_BUILD_TYPE)
+   set(CMAKE_BUILD_TYPE "Release")
+   message(STATUS "Build type not specified: defaulting to release.")
+endif(NOT CMAKE_BUILD_TYPE)
+set(CMAKE_BUILD_TYPE ${CMAKE_BUILD_TYPE} CACHE STRING "")
 
-    RTLSDR_APPEND_SRCS(${CMAKE_CURRENT_BINARY_DIR}/rtlsdr.rc)
-ENDIF(MSVC)
+list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake/Modules)
+
+if(NOT LIB_INSTALL_DIR)
+   set(LIB_INSTALL_DIR lib)
+endif()
+
+# Set the version information here
+set(VERSION_INFO_MAJOR_VERSION 0) # increment major on api compatibility changes
+set(VERSION_INFO_MINOR_VERSION 5) # increment minor on feature-level changes
+set(VERSION_INFO_PATCH_VERSION git) # increment patch for bug fixes and docs
+include(Version) # setup version info
 
 ########################################################################
-# Setup shared library variant
+# Compiler specific setup
 ########################################################################
-add_library(rtlsdr_shared SHARED ${rtlsdr_srcs})
-target_link_libraries(rtlsdr_shared ${LIBUSB_LIBRARIES})
-set_target_properties(rtlsdr_shared PROPERTIES DEFINE_SYMBOL "rtlsdr_EXPORTS")
-set_target_properties(rtlsdr_shared PROPERTIES OUTPUT_NAME rtlsdr)
-set_target_properties(rtlsdr_shared PROPERTIES SOVERSION ${MAJOR_VERSION})
-set_target_properties(rtlsdr_shared PROPERTIES VERSION ${LIBVER})
-
-########################################################################
-# Setup static library variant
-########################################################################
-add_library(rtlsdr_static STATIC ${rtlsdr_srcs})
-target_link_libraries(rtlsdr_static ${LIBUSB_LIBRARIES})
-set_property(TARGET rtlsdr_static APPEND PROPERTY COMPILE_DEFINITIONS "rtlsdr_STATIC" )
-if(NOT WIN32)
-# Force same library filename for static and shared variants of the library
-set_target_properties(rtlsdr_static PROPERTIES OUTPUT_NAME rtlsdr)
+if(CMAKE_COMPILER_IS_GNUCC AND NOT WIN32)
+    ADD_DEFINITIONS(-Wall)
+    ADD_DEFINITIONS(-Wextra)
+    ADD_DEFINITIONS(-Wno-unused-parameter)
+    ADD_DEFINITIONS(-Wno-unused)
+    ADD_DEFINITIONS(-Wsign-compare)
+    ADD_DEFINITIONS(-Wdeclaration-after-statement)
+    #http://gcc.gnu.org/wiki/Visibility
+    add_definitions(-fvisibility=hidden)
 endif()
 
 ########################################################################
-# Setup libraries used in executables
+# Find build dependencies
 ########################################################################
+find_package(PkgConfig)
+find_package(LibUSB)
+set(THREADS_USE_PTHREADS_WIN32 true)
+find_package(Threads)
 
-# JSON-RPC lib
-add_subdirectory(jsonrpc-c)
-
-# convenience lib
-add_library(convenience_static STATIC
-    convenience/convenience.c
-)
-
-# libgetopt lib
-if(WIN32)
-add_library(libgetopt_static STATIC
-    getopt/getopt.c
-)
-target_link_libraries(convenience_static
-    rtlsdr_shared
-)
+if(NOT LIBUSB_FOUND)
+    message(FATAL_ERROR "LibUSB 1.0 required to compile rtl-sdr")
 endif()
-
-########################################################################
-# Build utility
-########################################################################
-add_executable(rtl_fm_streamer rtl_fm_streamer.c)
-
-set(INSTALL_TARGETS rtlsdr_shared rtlsdr_static rtl_fm_streamer)
-
-target_link_libraries(rtl_fm_streamer rtlsdr_shared convenience_static
-    ${LIBUSB_LIBRARIES}
-    ${CMAKE_THREAD_LIBS_INIT}
-)
-
-if(UNIX)
-target_link_libraries(rtl_fm_streamer m jsonrpc-c)
-endif()
-
-if(WIN32)
-target_link_libraries(rtl_fm_streamer libgetopt_static jsonrpc-c)
-set_property(TARGET rtl_fm_streamer APPEND PROPERTY COMPILE_DEFINITIONS "rtlsdr_STATIC" )
+if(NOT THREADS_FOUND)
+    message(FATAL_ERROR "pthreads(-win32) required to compile rtl-sdr")
 endif()
 ########################################################################
-# Install built library files & utilities
+# Setup the include and linker paths
 ########################################################################
-install(TARGETS ${INSTALL_TARGETS}
-    LIBRARY DESTINATION ${LIB_INSTALL_DIR} # .so/.dylib file
-    ARCHIVE DESTINATION ${LIB_INSTALL_DIR} # .lib file
-    RUNTIME DESTINATION bin              # .dll file
+include_directories(
+    ${CMAKE_SOURCE_DIR}/include
+    ${LIBUSB_INCLUDE_DIR}
+    ${THREADS_PTHREADS_INCLUDE_DIR}
 )
+
+#link_directories(
+#    ...
+#)
+
+# Set component parameters
+#set(INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/include CACHE INTERNAL "" FORCE)
+
+########################################################################
+# Create uninstall target
+########################################################################
+configure_file(
+    ${CMAKE_SOURCE_DIR}/cmake/cmake_uninstall.cmake.in
+    ${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake
+@ONLY)
+
+add_custom_target(uninstall
+    ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake
+)
+
+########################################################################
+# Install udev rules
+########################################################################
+option(INSTALL_UDEV_RULES "Install udev rules for RTL-SDR" OFF)
+if (INSTALL_UDEV_RULES)
+    install (
+        FILES rtl-sdr.rules
+        DESTINATION "/etc/udev/rules.d"
+        COMPONENT "udev"
+        )
+else (INSTALL_UDEV_RULES)
+    message (STATUS "Udev rules not being installed, install them with -DINSTALL_UDEV_RULES=ON")
+endif (INSTALL_UDEV_RULES)
+
+option(DETACH_KERNEL_DRIVER "Detach kernel driver if loaded" OFF)
+if (DETACH_KERNEL_DRIVER)
+    message (STATUS "Building with kernel driver detaching enabled")
+    add_definitions(-DDETACH_KERNEL_DRIVER=1)
+else (DETACH_KERNEL_DRIVER)
+    message (STATUS "Building with kernel driver detaching disabled, use -DDETACH_KERNEL_DRIVER=ON to enable")
+endif (DETACH_KERNEL_DRIVER)
+
+########################################################################
+# Add subdirectories
+########################################################################
+add_subdirectory(include)
+add_subdirectory(src)
+
+########################################################################
+# Create Pkg Config File
+########################################################################
+FOREACH(inc ${LIBUSB_INCLUDE_DIR})
+    LIST(APPEND RTLSDR_PC_CFLAGS "-I${inc}")
+ENDFOREACH(inc)
+
+FOREACH(lib ${LIBUSB_LIBRARY_DIRS})
+    LIST(APPEND RTLSDR_PC_LIBS "-L${lib}")
+ENDFOREACH(lib)
+
+# use space-separation format for the pc file
+STRING(REPLACE ";" " " RTLSDR_PC_CFLAGS "${RTLSDR_PC_CFLAGS}")
+STRING(REPLACE ";" " " RTLSDR_PC_LIBS "${RTLSDR_PC_LIBS}")
+
+# unset these vars to avoid hard-coded paths to cross environment
+IF(CMAKE_CROSSCOMPILING)
+    UNSET(RTLSDR_PC_CFLAGS)
+    UNSET(RTLSDR_PC_LIBS)
+ENDIF(CMAKE_CROSSCOMPILING)
+
+set(prefix ${CMAKE_INSTALL_PREFIX})
+set(exec_prefix \${prefix})
+set(libdir \${exec_prefix}/${LIB_INSTALL_DIR})
+set(includedir \${prefix}/include)
+
+CONFIGURE_FILE(
+    ${CMAKE_CURRENT_SOURCE_DIR}/librtlsdr.pc.in
+    ${CMAKE_CURRENT_BINARY_DIR}/librtlsdr.pc
+@ONLY)
+
+INSTALL(
+    FILES ${CMAKE_CURRENT_BINARY_DIR}/librtlsdr.pc
+    DESTINATION ${LIB_INSTALL_DIR}/pkgconfig
+)
+
+########################################################################
+# Print Summary
+########################################################################
+MESSAGE(STATUS "Building for version: ${VERSION} / ${LIBVER}")
+MESSAGE(STATUS "Using install prefix: ${CMAKE_INSTALL_PREFIX}")
