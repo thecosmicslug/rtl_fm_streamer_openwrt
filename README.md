@@ -35,15 +35,32 @@ Then git checkout <branch/tag>, e.g.:
 
     git checkout openwrt-24.10
 
-Update the feeds:
-
-    './scripts/feeds update -a'
-    './scripts/feeds install -a'
 
 ### Adding rtl_fm_streamer to OpenWRT
 -------------------------------------
-    ADD HERE
-    AND BUILD!
+
+Add this repo to feeds/packages/utils/
+
+    cd feeds/packages/utils/
+    git clone git@github.com:thecosmicslug/rtl_fm_streamer_openwrt.git
+
+Adjust Makefile 'SOURCE_DIR' to point to repo 'src' subdir
+
+Update the feeds: (May take a while)
+
+    './scripts/feeds update -a'
+    './scripts/feeds install -a'
+    
+Configure the build by selecting target router and the package at utils/rtl_fm_streamer
+
+    make defconfig
+    make menuconfig
+
+    make download all
+
+Build the packages, log to build.log
+
+    make V=s 2>&1 | tee build.log | grep -i -E "^make.*(error|[12345]...Entering dir)"
 
 
 ## RTL_FM_Streamer Original README

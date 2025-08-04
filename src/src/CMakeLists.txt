@@ -47,23 +47,40 @@ ENDIF(MSVC)
 ########################################################################
 # Setup shared library variant
 ########################################################################
+#add_library(rtlsdr_shared SHARED librtlsdr.c tuner_e4k.c tuner_fc0012.c tuner_fc0013.c tuner_fc2580.c tuner_r82xx.c)
 add_library(rtlsdr_shared SHARED ${rtlsdr_srcs})
-target_link_libraries(rtlsdr_shared ${LIBUSB_LIBRARIES})
+target_link_libraries(rtlsdr_shared ${LIBUSB_LIBRARIES} ${THREADS_PTHREADS_LIBRARY})
+
+target_include_directories(rtlsdr_shared PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>  # <prefix>/include
+  ${LIBUSB_INCLUDE_DIRS}
+  ${THREADS_PTHREADS_INCLUDE_DIR}
+  )
+include(GenerateExportHeader)
 set_target_properties(rtlsdr_shared PROPERTIES DEFINE_SYMBOL "rtlsdr_EXPORTS")
 set_target_properties(rtlsdr_shared PROPERTIES OUTPUT_NAME rtlsdr)
-set_target_properties(rtlsdr_shared PROPERTIES SOVERSION ${MAJOR_VERSION})
-set_target_properties(rtlsdr_shared PROPERTIES VERSION ${LIBVER})
+generate_export_header(rtlsdr_shared)
 
 ########################################################################
 # Setup static library variant
 ########################################################################
+#add_library(rtlsdr_static STATIC librtlsdr.c tuner_e4k.c tuner_fc0012.c tuner_fc0013.c tuner_fc2580.c tuner_r82xx.c)
 add_library(rtlsdr_static STATIC ${rtlsdr_srcs})
-target_link_libraries(rtlsdr_static ${LIBUSB_LIBRARIES})
+target_link_libraries(rtlsdr_static ${LIBUSB_LIBRARIES} ${THREADS_PTHREADS_LIBRARY})
+target_include_directories(rtlsdr_static PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>  # <prefix>/include
+  ${LIBUSB_INCLUDE_DIRS}
+  ${THREADS_PTHREADS_INCLUDE_DIR}
+  )
+include(GenerateExportHeader)  
 set_property(TARGET rtlsdr_static APPEND PROPERTY COMPILE_DEFINITIONS "rtlsdr_STATIC" )
 if(NOT WIN32)
 # Force same library filename for static and shared variants of the library
 set_target_properties(rtlsdr_static PROPERTIES OUTPUT_NAME rtlsdr)
 endif()
+generate_export_header(rtlsdr_static)
 
 ########################################################################
 # Setup libraries used in executables

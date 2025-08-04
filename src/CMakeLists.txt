@@ -21,7 +21,7 @@
 ########################################################################
 # Project setup
 ########################################################################
-cmake_minimum_required(VERSION 2.6)
+cmake_minimum_required(VERSION 3.6)
 project(rtlsdr C)
 
 #select the release build type by default to get optimization flags
@@ -41,36 +41,64 @@ endif()
 set(VERSION_INFO_MAJOR_VERSION 0) # increment major on api compatibility changes
 set(VERSION_INFO_MINOR_VERSION 5) # increment minor on feature-level changes
 set(VERSION_INFO_PATCH_VERSION git) # increment patch for bug fixes and docs
-include(Version) # setup version info
+#### include(Version) # setup version info
 
 ########################################################################
 # Compiler specific setup
 ########################################################################
 if(CMAKE_COMPILER_IS_GNUCC AND NOT WIN32)
-    ADD_DEFINITIONS(-Wall)
-    ADD_DEFINITIONS(-Wextra)
-    ADD_DEFINITIONS(-Wno-unused-parameter)
-    ADD_DEFINITIONS(-Wno-unused)
-    ADD_DEFINITIONS(-Wsign-compare)
-    ADD_DEFINITIONS(-Wdeclaration-after-statement)
+    add_compile_options(-Wall)
+    add_compile_options(-Wextra)
+    add_compile_options(-Wno-unused-parameter)
+    add_compile_options(-Wno-unused)
+    add_compile_options(-Wsign-compare)
+    add_compile_options(-Wdeclaration-after-statement)
     #http://gcc.gnu.org/wiki/Visibility
-    add_definitions(-fvisibility=hidden)
+    add_compile_options(-fvisibility=hidden)
+    add_compile_options(-w)
 endif()
 
 ########################################################################
 # Find build dependencies
 ########################################################################
 find_package(PkgConfig)
+find_package(LibRTLSDR)
 find_package(LibUSB)
+find_package(Libev)
+
 set(THREADS_USE_PTHREADS_WIN32 true)
 find_package(Threads)
 
-if(NOT LIBUSB_FOUND)
-    message(FATAL_ERROR "LibUSB 1.0 required to compile rtl-sdr")
-endif()
 if(NOT THREADS_FOUND)
     message(FATAL_ERROR "pthreads(-win32) required to compile rtl-sdr")
 endif()
+
+if(LibRTLSDR_FOUND)
+    include_directories(${LibRTLSDR_INCLUDE_DIRS})
+    list(APPEND SDR_LIBRARIES ${LibRTLSDR_LIBRARIES})
+    add_compile_options(-DRTLSDR)
+else()
+    message(STATUS "LibRTLSDR not found!")
+endif()
+
+if(LibUSB_FOUND)
+    include_directories(${LIBUSB_INCLUDE_DIRS})
+    list(APPEND SDR_LIBRARIES ${LIBUSB_LIBRARIES})
+    set(LIBUSB_LIBRARIES "" CACHE STRING "manual libusb path")
+    set(LIBUSB_INCLUDE_DIRS "" CACHE STRING "manual libusb includepath")
+    add_compile_options(-DLIBUSB1)
+else()
+    message(STATUS "libusb-1.0 error messages are not available.")
+endif()
+
+if(LIBEV_FOUND)
+    include_directories(${LIBEV_INCLUDE_DIR})
+    list(APPEND SDR_LIBRARIES ${LIBEV_LIBRARY})
+    add_compile_options(-lev)
+else()
+    message(STATUS "LIBEV_NOT_FOUND error!! ")
+endif()
+
 ########################################################################
 # Setup the include and linker paths
 ########################################################################
@@ -116,7 +144,7 @@ endif (INSTALL_UDEV_RULES)
 option(DETACH_KERNEL_DRIVER "Detach kernel driver if loaded" OFF)
 if (DETACH_KERNEL_DRIVER)
     message (STATUS "Building with kernel driver detaching enabled")
-    add_definitions(-DDETACH_KERNEL_DRIVER=1)
+    add_compile_options(-DDETACH_KERNEL_DRIVER=1)
 else (DETACH_KERNEL_DRIVER)
     message (STATUS "Building with kernel driver detaching disabled, use -DDETACH_KERNEL_DRIVER=ON to enable")
 endif (DETACH_KERNEL_DRIVER)
