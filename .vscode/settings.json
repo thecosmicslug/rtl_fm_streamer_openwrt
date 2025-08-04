@@ -1,0 +1,12 @@
+{
+    "files.associations": {
+        "*.py": "python",
+        "*.json": "jsonc",
+        "array": "c",
+        "string_view": "c",
+        "format": "c",
+        "initializer_list": "c",
+        "ranges": "c",
+        "span": "c"
+    }
+}
