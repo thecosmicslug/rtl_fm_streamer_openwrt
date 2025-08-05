@@ -43,8 +43,7 @@ Add this repo to feeds/packages/utils/
 
     cd feeds/packages/utils/
     git clone git@github.com:thecosmicslug/rtl_fm_streamer_openwrt.git
-
-Adjust Makefile 'SOURCE_DIR' to point to repo 'src' subdir
+    cd ../../../
 
 Update the feeds: (May take a while)
 
