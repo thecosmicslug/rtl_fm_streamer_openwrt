@@ -47,7 +47,6 @@ ENDIF(MSVC)
 ########################################################################
 # Setup shared library variant
 ########################################################################
-#add_library(rtlsdr_shared SHARED librtlsdr.c tuner_e4k.c tuner_fc0012.c tuner_fc0013.c tuner_fc2580.c tuner_r82xx.c)
 add_library(rtlsdr_shared SHARED ${rtlsdr_srcs})
 target_link_libraries(rtlsdr_shared ${LIBUSB_LIBRARIES} ${THREADS_PTHREADS_LIBRARY})
 
@@ -65,7 +64,6 @@ generate_export_header(rtlsdr_shared)
 ########################################################################
 # Setup static library variant
 ########################################################################
-#add_library(rtlsdr_static STATIC librtlsdr.c tuner_e4k.c tuner_fc0012.c tuner_fc0013.c tuner_fc2580.c tuner_r82xx.c)
 add_library(rtlsdr_static STATIC ${rtlsdr_srcs})
 target_link_libraries(rtlsdr_static ${LIBUSB_LIBRARIES} ${THREADS_PTHREADS_LIBRARY})
 target_include_directories(rtlsdr_static PUBLIC

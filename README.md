@@ -12,9 +12,9 @@ This code was taken from https://github.com/AlbrechtL/rtl_fm_streamer and adapte
 
 ### Building for OpenWRT
 ---------------------------
-First we need to setup the OpenWRT build system, these are the basic steps to build your own OpenWrt images/packages:
+First we need to setup the OpenWRT build system, these are the basic steps to build your own OpenWrt images/packages.
 
-Install the build prerequisites (Ubuntu 24.04)
+Install the build prerequisites: (Ubuntu 24.04)
 
     sudo apt update
     sudo apt install build-essential clang flex bison g++ gawk \
@@ -25,13 +25,12 @@ Download the sources:
 
     git clone https://git.openwrt.org/openwrt/openwrt.git
     cd openwrt
-    git pull
 
 View the available releases:
 
     git branch -a
 
-Then git checkout <branch/tag>, e.g.:
+Then pick a version to checkout:
 
     git checkout openwrt-24.10
 
@@ -39,25 +38,32 @@ Then git checkout <branch/tag>, e.g.:
 ### Adding rtl_fm_streamer to OpenWRT
 -------------------------------------
 
+Retrieve the feeds:
+
+    ./scripts/feeds update -a
+    ./scripts/feeds install -a
+
 Add this repo to feeds/packages/utils/
 
     cd feeds/packages/utils/
     git clone git@github.com:thecosmicslug/rtl_fm_streamer_openwrt.git
     cd ../../../
 
-Update the feeds: (May take a while)
-
-    './scripts/feeds update -a'
-    './scripts/feeds install -a'
+Update Feeds to include rtl_fm_streamer
+    ./scripts/feeds update -a && ./scripts/feeds install -a
     
-Configure the build by selecting target router and the package at utils/rtl_fm_streamer
+Configure the build by selecting target router and the our package at utils/rtl_fm_streamer
 
     make defconfig
     make menuconfig
 
+Save the configuration as .config to exit menuconfig.
+
+Download needed files:
+
     make download all
 
-Build the packages, log to build.log
+Build the packages, log output to build.log: (May take a while)
 
     make V=s 2>&1 | tee build.log | grep -i -E "^make.*(error|[12345]...Entering dir)"
 
