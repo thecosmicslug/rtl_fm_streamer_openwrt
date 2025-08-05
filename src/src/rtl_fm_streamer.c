@@ -82,7 +82,6 @@
 #define VERSION "0.0.6"
 
 #define DEFAULT_SAMPLE_RATE		240000
-//#define DEFAULT_BUF_LENGTH		(1 * 16384)
 #define DEFAULT_BUF_LENGTH		(1 * 32768)
 #define MAXIMUM_OVERSAMPLE		32
 #define MAXIMUM_BUF_LENGTH		(MAXIMUM_OVERSAMPLE * DEFAULT_BUF_LENGTH)
@@ -978,7 +977,7 @@ static void rtlsdr_callback(unsigned char *buf, uint32_t len, void *ctx)
 		input_buffer_size = input_buffer_size_max;
 	}
 	pthread_rwlock_unlock(&d->rw);
-	safe_cond_signal(&d->ready, &d->ready_m);
+	//safe_cond_signal(&d->ready, &d->ready_m);
 }
 
 static void *
@@ -995,7 +994,7 @@ demod_thread_fn(void *arg)
 		{
 			if ((d->exit_flag) || (do_exit)) return 0;
 			usleep(5000);
-			safe_cond_wait(&d->ready, &d->ready_m);
+			//safe_cond_wait(&d->ready, &d->ready_m);
 		}
 
 		pthread_rwlock_wrlock(&d->rw);
@@ -1054,7 +1053,7 @@ demod_thread_fn(void *arg)
 			output_buffer_size = output_buffer_size_max;
 		}
 		pthread_rwlock_unlock(&o->rw);
-		safe_cond_signal(&o->ready, &o->ready_m);
+		//safe_cond_signal(&o->ready, &o->ready_m);
 	}
 
 	return 0;
@@ -1072,7 +1071,7 @@ output_thread_fn(void *arg)
 	{
 		while (output_buffer_size < len)
 		{
-			safe_cond_wait(&s->ready, &s->ready_m);
+			//safe_cond_wait(&s->ready, &s->ready_m);
 			if (do_exit) return 0;
 			usleep(5000);
 		}

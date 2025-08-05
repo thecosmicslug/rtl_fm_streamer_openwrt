@@ -39,12 +39,6 @@
 #define LIBUSB_CALL
 #endif
 
-/* libusb < 1.0.9 doesn't have libusb_handle_events_timeout_completed */
-#ifndef HAVE_LIBUSB_HANDLE_EVENTS_TIMEOUT_COMPLETED
-#define libusb_handle_events_timeout_completed(ctx, tv, c) \
-	libusb_handle_events_timeout(ctx, tv)
-#endif
-
 /* two raised to the power of n */
 #define TWO_POW(n)		((double)(1ULL<<(n)))
 
@@ -125,6 +119,8 @@ struct rtlsdr_dev {
 	int dev_lost;
 	int driver_active;
 	unsigned int xfer_errors;
+	char manufact[256];
+	char product[256];
 };
 
 void rtlsdr_set_gpio_bit(rtlsdr_dev_t *dev, uint8_t gpio, int val);
@@ -1436,6 +1432,16 @@ int rtlsdr_get_index_by_serial(const char *serial)
 	return -3;
 }
 
+/* Returns true if the manufact_check and product_check strings match what is in the dongles EEPROM */
+int rtlsdr_check_dongle_model(void *dev, char *manufact_check, char *product_check)
+{
+	if ((strcmp(((rtlsdr_dev_t *)dev)->manufact, manufact_check) == 0&& strcmp(((rtlsdr_dev_t *)dev)->product, product_check) == 0))
+		return 1;
+
+	return 0;
+}
+
+
 int rtlsdr_open(rtlsdr_dev_t **out_dev, uint32_t index)
 {
 	int r;
@@ -1534,6 +1540,9 @@ int rtlsdr_open(rtlsdr_dev_t **out_dev, uint32_t index)
 	rtlsdr_init_baseband(dev);
 	dev->dev_lost = 0;
 
+	/* Get device manufacturer and product id */
+	r = rtlsdr_get_usb_strings(dev, dev->manufact, dev->product, NULL);
+
 	/* Probe tuners */
 	rtlsdr_set_i2c_repeater(dev, 1);
 
@@ -1561,6 +1570,10 @@ int rtlsdr_open(rtlsdr_dev_t **out_dev, uint32_t index)
 	reg = rtlsdr_i2c_read_reg(dev, R828D_I2C_ADDR, R82XX_CHECK_ADDR);
 	if (reg == R82XX_CHECK_VAL) {
 		fprintf(stderr, "Found Rafael Micro R828D tuner\n");
+
+		if (rtlsdr_check_dongle_model(dev, "RTLSDRBlog", "Blog V4"))
+			fprintf(stderr, "RTL-SDR Blog V4 Detected\n");
+
 		dev->tuner_type = RTLSDR_TUNER_R828D;
 		goto found;
 	}
@@ -1594,7 +1607,10 @@ found:
 
 	switch (dev->tuner_type) {
 	case RTLSDR_TUNER_R828D:
-		dev->tun_xtal = R828D_XTAL_FREQ;
+		/* If NOT an RTL-SDR Blog V4, set typical R828D 16 MHz freq. Otherwise, keep at 28.8 MHz. */
+		if (!(rtlsdr_check_dongle_model(dev, "RTLSDRBlog", "Blog V4"))) {
+			dev->tun_xtal = R828D_XTAL_FREQ;
+		}
 		/* fall-through */
 	case RTLSDR_TUNER_R820T:
 		/* disable Zero-IF mode */
@@ -1628,6 +1644,9 @@ found:
 	return 0;
 err:
 	if (dev) {
+		if (dev->devh)
+			libusb_close(dev->devh);
+
 		if (dev->ctx)
 			libusb_exit(dev->ctx);
 
@@ -1748,18 +1767,33 @@ static int _rtlsdr_alloc_async_buffers(rtlsdr_dev_t *dev)
 	dev->xfer_buf = malloc(dev->xfer_buf_num * sizeof(unsigned char *));
 	memset(dev->xfer_buf, 0, dev->xfer_buf_num * sizeof(unsigned char *));
 
-#if defined (__linux__) && LIBUSB_API_VERSION >= 0x01000105
+#if defined(ENABLE_ZEROCOPY) && defined (__linux__) && LIBUSB_API_VERSION >= 0x01000105
 	fprintf(stderr, "Allocating %d zero-copy buffers\n", dev->xfer_buf_num);
 
 	dev->use_zerocopy = 1;
 	for (i = 0; i < dev->xfer_buf_num; ++i) {
 		dev->xfer_buf[i] = libusb_dev_mem_alloc(dev->devh, dev->xfer_buf_len);
 
-		if (!dev->xfer_buf[i]) {
+		if (dev->xfer_buf[i]) {
+			/* Check if Kernel usbfs mmap() bug is present: if the
+			 * mapping is correct, the buffers point to memory that
+			 * was memset to 0 by the Kernel, otherwise, they point
+			 * to random memory. We check if the buffers are zeroed
+			 * and otherwise fall back to buffers in userspace.
+			 */
+			if (dev->xfer_buf[i][0] || memcmp(dev->xfer_buf[i],
+							  dev->xfer_buf[i] + 1,
+							  dev->xfer_buf_len - 1)) {
+				fprintf(stderr, "Detected Kernel usbfs mmap() "
+						"bug, falling back to buffers "
+						"in userspace\n");
+				dev->use_zerocopy = 0;
+				break;
+			}
+		} else {
 			fprintf(stderr, "Failed to allocate zero-copy "
 					"buffer for transfer %d\nFalling "
 					"back to buffers in userspace\n", i);
-
 			dev->use_zerocopy = 0;
 			break;
 		}
@@ -1912,6 +1946,9 @@ int rtlsdr_read_async(rtlsdr_dev_t *dev, rtlsdr_read_async_cb_t cb, void *ctx,
 					/* handle events after canceling
 					 * to allow transfer status to
 					 * propagate */
+#ifdef _WIN32
+					Sleep(1);
+#endif
 					libusb_handle_events_timeout_completed(dev->ctx,
 									       &zerotv, NULL);
 					if (r < 0)
@@ -1991,13 +2028,18 @@ int rtlsdr_i2c_read_fn(void *dev, uint8_t addr, uint8_t *buf, int len)
 	return -1;
 }
 
-int rtlsdr_set_bias_tee(rtlsdr_dev_t *dev, int on)
+int rtlsdr_set_bias_tee_gpio(rtlsdr_dev_t *dev, int gpio, int on)
 {
 	if (!dev)
 		return -1;
 
-	rtlsdr_set_gpio_output(dev, 0);
-	rtlsdr_set_gpio_bit(dev, 0, on);
+	rtlsdr_set_gpio_output(dev, gpio);
+	rtlsdr_set_gpio_bit(dev, gpio, on);
 
 	return 0;
+}
+
+int rtlsdr_set_bias_tee(rtlsdr_dev_t *dev, int on)
+{
+	return rtlsdr_set_bias_tee_gpio(dev, 0, on);
 }
